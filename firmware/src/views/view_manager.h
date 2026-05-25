@@ -6,6 +6,7 @@
 #include "face_view.h"
 #include "image_view.h"
 #include "text_view.h"
+#include "vibe_test_view.h"
 
 class Renderer;
 
@@ -20,17 +21,20 @@ class ViewManager {
   FaceView& face() { return face_; }
   TextView& text() { return text_; }
   ImageView& image() { return image_; }
+  VibeTestView& vibeTest() { return vibeTest_; }
 
   bool isFaceActive() const { return active_ == &face_; }
   bool isTextActive() const { return active_ == &text_; }
   bool isImageActive() const { return active_ == &image_; }
+  bool isVibeTestActive() const { return active_ == &vibeTest_; }
 
-  // "face", "text", "image", or "none" — used by the GET state response.
+  // "face", "text", "image", "vibetest", or "none" — used by GET state.
   const char* activeViewName() const;
 
  private:
   FaceView face_;
   TextView text_;
   ImageView image_;
+  VibeTestView vibeTest_;
   View* active_ = nullptr;
 };

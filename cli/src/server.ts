@@ -174,6 +174,21 @@ export async function runServer(): Promise<void> {
         }
         return sendCmd(res, `SET mood ${name}`);
       }
+      if (method === "POST" && path === "/vibe") {
+        // `on` (or no field) enters Vibe Mode, `off` returns to Desktop,
+        // `test` enters the diagnostic GPIO-0 telemetry view.
+        const body = await readJson(req);
+        const raw = (body?.state ?? "on") as unknown;
+        const state = typeof raw === "string" ? raw.toLowerCase() : "on";
+        if (state !== "on" && state !== "off" && state !== "test") {
+          return send(res, {
+            ok: false,
+            connected: device.isConnected(),
+            message: "state must be 'on', 'off', or 'test'",
+          });
+        }
+        return sendCmd(res, `VIBE ${state}`);
+      }
       if (method === "GET" && path === "/state") return sendCmd(res, "GET state");
       if (method === "GET" && path === "/fps") return sendCmd(res, "GET fps");
       if (method === "GET" && path === "/faces") return sendCmd(res, "LIST faces");

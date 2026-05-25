@@ -27,6 +27,14 @@
 // --- Passive piezo buzzer ----------------------------------------------
 #define PIN_BUZZER 10
 
+// --- Vibe-mode SYNC input ----------------------------------------------
+// Beat pulse from the DJ device on a shared bus (see DJ-Plan.md). GPIO0 on
+// the ESP32-C3 is *not* a strapping pin (unlike on the classic ESP32) and
+// is otherwise free on the SuperMini header, so it's a clean choice. The
+// pin idles via internal pulldown — the line floats while the DJ is still
+// booting, so without the pulldown we would fire spurious beat interrupts.
+#define PIN_SYNC 0
+
 // --- OLED panel --------------------------------------------------------
 // U8g2's NONAME constructor already targets I2C address 0x3C; OLED_ADDR is
 // kept for reference and for any future driver swap.

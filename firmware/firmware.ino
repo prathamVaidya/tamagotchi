@@ -6,6 +6,8 @@
 // to Free Mode. The buzzer is synced to the face — every change jingles in
 // Desktop Mode, only mood shifts jingle in Free Mode. See firmware/README.
 
+#include <strings.h>  // strcasecmp — comparing VIBE on/off in the command router
+
 #include "src/assets/expressions.h"
 #include "src/assets/jingles.h"
 #include "src/buzzer/buzzer.h"
@@ -14,6 +16,7 @@
 #include "src/modes/desktop_mode.h"
 #include "src/modes/free_mode.h"
 #include "src/modes/mode.h"
+#include "src/modes/vibe_mode.h"
 #include "src/mood.h"
 #include "src/renderer.h"
 #include "src/transport.h"
@@ -28,6 +31,7 @@ static Transport transport;
 static ViewManager viewManager;
 static DesktopMode desktopMode(transport, renderer, petMood);
 static FreeMode freeMode(petMood);
+static VibeMode vibeMode;
 
 // Free Mode is the default; a command switches to Desktop Mode.
 static Mode* currentMode = &freeMode;
@@ -85,8 +89,21 @@ void loop() {
   Command cmd;
   if (transport.poll(cmd)) {
     lastCmdMs = now;
-    setMode(desktopMode);  // any command means a host is driving the pet
-    currentMode->onCommand(cmd, viewManager);
+    // VIBE is the only command that routes to a non-Desktop mode. Every
+    // other command (including `VIBE off`) hands control back to Desktop.
+    if (cmd.type == CmdType::Vibe && strcasecmp(cmd.arg1, "off") != 0) {
+      // VIBE / VIBE on   → dance to the bus
+      // VIBE test        → diagnostic view (raw GPIO 0 telemetry)
+      vibeMode.setTestMode(strcasecmp(cmd.arg1, "test") == 0);
+      setMode(vibeMode);
+      transport.println("OK");
+    } else if (cmd.type == CmdType::Vibe) {
+      setMode(desktopMode);
+      transport.println("OK");
+    } else {
+      setMode(desktopMode);
+      currentMode->onCommand(cmd, viewManager);
+    }
   }
 
   // BOOT button: a tap cycles to the next expression (and, like a

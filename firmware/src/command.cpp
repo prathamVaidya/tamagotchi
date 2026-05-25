@@ -65,6 +65,13 @@ Command parseLine(const char* line) {
       nextToken(&p, name, sizeof(name));
       copyArg(cmd.arg1, sizeof(cmd.arg1), name);
     }
+  } else if (strcasecmp(verb, "VIBE") == 0) {
+    // `VIBE` and `VIBE on` enter Vibe Mode; `VIBE off` leaves it. Default
+    // to "on" when no argument is given so a bare `VIBE` line just works.
+    cmd.type = CmdType::Vibe;
+    char arg[sizeof(cmd.arg1)];
+    nextToken(&p, arg, sizeof(arg));
+    copyArg(cmd.arg1, sizeof(cmd.arg1), arg[0] == '\0' ? "on" : arg);
   } else if (strcasecmp(verb, "SHOW") == 0) {
     char what[8];
     nextToken(&p, what, sizeof(what));

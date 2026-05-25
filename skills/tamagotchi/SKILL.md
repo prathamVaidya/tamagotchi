@@ -37,6 +37,7 @@ tamagotchi face <name>             # switch face expression
 tamagotchi text "<message>"        # show scrolling text
 tamagotchi image <path>            # render a PNG/JPG on the OLED (128x64, 1-bit, dithered)
 tamagotchi mood <name>             # set mood
+tamagotchi vibe [on|off|test]      # Vibe Mode: dances to SYNC pulse; 'test' shows raw GPIO 0 telemetry
 tamagotchi get state               # current view + expression
 tamagotchi get fps                 # display frame rate
 tamagotchi list faces              # face names the device knows
@@ -56,6 +57,7 @@ All responses are JSON and always HTTP 200, even when the device is offline. Che
 | POST   | /text    | `{"text":"hello"}`    | Scrolling text view (keep it short)           |
 | POST   | /image   | `{"data":"<base64>"}` | Push a 128×64 1bpp frame, MSB-first (1024 B)  |
 | POST   | /mood    | `{"name":"playful"}`  | Set mood (resets on device reboot)            |
+| POST   | /vibe    | `{"state":"on"}`      | Enter Vibe Mode (`"off"` returns to Desktop)  |
 | GET    | /state   | —                     | Current view + expression                     |
 | GET    | /fps     | —                     | Display frame rate                            |
 | GET    | /faces   | —                     | List faces known to the device                |

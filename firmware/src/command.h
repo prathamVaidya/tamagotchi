@@ -8,6 +8,8 @@
 //   SHOW text <string>    switch to the text view ("<string>" = rest of line)
 //   SHOW image <base64>   push a 128x64 1bpp bitmap (1024 bytes, MSB-first)
 //   SET mood <name>       Phase 1: accepted and acked, no behavior yet
+//   VIBE [on|off]         enter / leave Vibe Mode (dances to a SYNC pulse;
+//                         no arg or "on" enters, "off" returns to Desktop)
 //   GET state             query the current view + expression
 //   GET fps               query the current display frame rate
 //   LIST faces            list all expression names
@@ -21,6 +23,7 @@ enum class CmdType {
   ShowText,
   ShowImage,
   SetMood,
+  Vibe,
   GetState,
   GetFps,
   ListFaces,

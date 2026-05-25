@@ -50,6 +50,19 @@ program
   .action(async (parts: string[]) => print(await client.text(parts.join(" "))));
 
 program
+  .command("vibe")
+  .description("enter Vibe Mode (dances to a SYNC pulse on the bus; 'off' leaves, 'test' shows raw GPIO 0 telemetry)")
+  .argument("[state]", "on | off | test (default: on)")
+  .action(async (state?: string) => {
+    const s = (state ?? "on").toLowerCase();
+    if (s !== "on" && s !== "off" && s !== "test") {
+      console.error("state must be 'on', 'off', or 'test'");
+      process.exit(1);
+    }
+    print(await client.vibe(s as "on" | "off" | "test"));
+  });
+
+program
   .command("image")
   .description("show a PNG/JPG on the OLED (auto-resized to 128x64, 1-bit)")
   .argument("<path>", "path to a PNG or JPG file")

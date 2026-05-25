@@ -19,5 +19,6 @@ const char* ViewManager::activeViewName() const {
   if (active_ == &face_) return "face";
   if (active_ == &text_) return "text";
   if (active_ == &image_) return "image";
+  if (active_ == &vibeTest_) return "vibetest";
   return "none";
 }
