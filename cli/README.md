@@ -17,8 +17,14 @@ pieces:
   reverse-proxies to the daemon. Useful for `curl`, AI agents, web
   UIs, or anything that's easier with HTTP than a Unix socket.
 
-`tamagotchi setup` installs both as macOS launchd agents that come up
-at login.
+`tamagotchi setup` installs both as platform-native auto-start jobs
+that come up at login:
+
+| Platform | Service backend             |
+| -------- | --------------------------- |
+| macOS    | `launchctl` LaunchAgents    |
+| Linux    | `systemctl --user` units    |
+| Windows  | Task Scheduler logon tasks  |
 
 **All command endpoints return HTTP 200** — even when the pet is
 unplugged — so agents see a steady, calm API and never see error codes
@@ -170,16 +176,24 @@ cli/
   src/daemon.ts           the UDS daemon, owns the serial port
   src/server.ts           optional TCP HTTP reverse-proxy to the daemon
   src/ipc.ts              shared UDS paths + HTTP-over-UDS helpers
-  src/service.ts          launchd plists + setup / enable / disable / status
+  src/service/            setup / enable / disable / status, per-platform
+    index.ts                platform dispatcher
+    common.ts               shared helpers (path resolution, health checks)
+    darwin.ts               macOS launchd backend
+    linux.ts                systemd --user backend
+    windows.ts              Task Scheduler backend
   src/client.ts           CLI's transport (UDS by default, TCP if TAMAGOTCHI_URL set)
   src/image.ts            PNG/JPG → 128×64 1bpp (dither + MSB-pack)
 ```
 
 ## Notes
 
-- macOS only for the auto-start (launchd) right now. On Linux / Windows,
-  run `tamagotchi daemon run` (and optionally `tamagotchi server run`)
-  in a terminal yourself. The CLI itself works on any platform.
+- Auto-start is supported on macOS (launchd), Linux (`systemctl --user`),
+  and Windows (Task Scheduler). On Linux, services stop when you log
+  out unless you run `sudo loginctl enable-linger $USER` — `setup`
+  prints a hint if lingering isn't on. If your environment can't host
+  one of these (minimal container, WSL1, etc.), run `tamagotchi daemon
+  run` (and optionally `tamagotchi server run`) in a terminal manually.
 - The daemon is the only thing that holds the serial port — running
   `arduino-cli monitor` or the Arduino IDE at the same time will fight
   for it. Stop one of them.
