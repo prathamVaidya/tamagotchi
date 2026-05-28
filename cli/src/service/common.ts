@@ -27,7 +27,7 @@ export function resolveExecutionPaths(): Paths {
     tsxPath = require.resolve("tsx/cli");
   } catch {
     console.error(
-      "Could not resolve `tsx/cli`. Reinstall the CLI (npm i -g @0xpv/tamagotchi).",
+      "Could not resolve `tsx/cli`. Reinstall the CLI (npm i -g gochi).",
     );
     process.exit(1);
   }

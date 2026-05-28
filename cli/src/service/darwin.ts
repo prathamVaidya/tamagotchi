@@ -3,7 +3,7 @@
 // Two LaunchAgents, each with its own plist:
 //
 //   com.tamagotchi.daemon  — long-lived port owner; serves the UDS.
-//                            Installed by `tamagotchi setup`. Always on.
+//                            Installed by `gochi setup`. Always on.
 //   com.tamagotchi.http    — TCP :7474 reverse-proxy to the daemon.
 //                            Installed by `setup` (ON by default) and by
 //                            `server enable`; removed by `server disable`.
@@ -134,13 +134,13 @@ export function setup(): void {
   console.log(`  HTTP frontend: ${HTTP_PLIST}  (http://localhost:${SERVER_PORT})`);
   console.log("");
   console.log("Both start automatically at login. To turn off HTTP:");
-  console.log("  tamagotchi server disable");
+  console.log("  gochi server disable");
 }
 
 export function enableHttp(): void {
   ensureDaemonDir();
   if (!existsSync(DAEMON_PLIST)) {
-    console.error("daemon isn't installed yet. Run `tamagotchi setup` first.");
+    console.error("daemon isn't installed yet. Run `gochi setup` first.");
     process.exit(1);
   }
   const paths = resolveExecutionPaths();

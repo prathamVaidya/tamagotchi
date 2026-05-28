@@ -26,8 +26,8 @@ function backend(): ServiceBackend {
       return windows;
     default:
       console.error(
-        `tamagotchi: unsupported platform '${process.platform}'.\n` +
-          "Run `tamagotchi daemon run` (and optionally `tamagotchi server run`) in a terminal to use the CLI manually.",
+        `gochi: unsupported platform '${process.platform}'.\n` +
+          "Run `gochi daemon run` (and optionally `gochi server run`) in a terminal to use the CLI manually.",
       );
       process.exit(1);
   }

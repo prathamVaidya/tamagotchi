@@ -69,7 +69,7 @@ function ensureSystemdAvailable(): void {
   if (r.status !== 0 && /Failed to connect|No such file/i.test(r.stderr || "")) {
     console.error(
       "systemd --user is not available on this system.\n" +
-      "Run `tamagotchi daemon run` (and optionally `tamagotchi server run`) in a terminal to use the CLI manually.",
+      "Run `gochi daemon run` (and optionally `gochi server run`) in a terminal to use the CLI manually.",
     );
     process.exit(1);
   }
@@ -136,7 +136,7 @@ export function setup(): void {
   console.log("");
   console.log("Logs:  journalctl --user -u tamagotchi-daemon -f");
   console.log("Both start automatically at login. To turn off HTTP:");
-  console.log("  tamagotchi server disable");
+  console.log("  gochi server disable");
   lingerHint();
 }
 
@@ -144,7 +144,7 @@ export function enableHttp(): void {
   ensureSystemdAvailable();
   ensureDaemonDir();
   if (!existsSync(DAEMON_UNIT_PATH)) {
-    console.error("daemon isn't installed yet. Run `tamagotchi setup` first.");
+    console.error("daemon isn't installed yet. Run `gochi setup` first.");
     process.exit(1);
   }
   const paths = resolveExecutionPaths();

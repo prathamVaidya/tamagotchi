@@ -21,7 +21,7 @@ export type DiscoveryEvent =
 export type DiscoveryHandle = {
   stop: () => void;
   // Forget what we've seen and re-emit `attach` for every currently
-  // listed device on the next tick. Used after `tamagotchi start`: the
+  // listed device on the next tick. Used after `gochi start`: the
   // daemon dropped its serial handle but the port is still listed by
   // the OS, so the steady-state diff produces no event to reconnect on.
   rescan: () => Promise<void>;

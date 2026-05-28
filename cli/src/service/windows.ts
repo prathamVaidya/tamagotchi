@@ -160,13 +160,13 @@ export function setup(): void {
   console.log(`  HTTP frontend task: ${HTTP_TASK}  (http://localhost:${SERVER_PORT})`);
   console.log("");
   console.log("Both auto-start at sign-in. To turn off HTTP:");
-  console.log("  tamagotchi server disable");
+  console.log("  gochi server disable");
 }
 
 export function enableHttp(): void {
   ensureDaemonDir();
   if (!taskExists(DAEMON_TASK)) {
-    console.error("daemon isn't installed yet. Run `tamagotchi setup` first.");
+    console.error("daemon isn't installed yet. Run `gochi setup` first.");
     process.exit(1);
   }
   const paths = resolveExecutionPaths();

@@ -6,7 +6,7 @@
 // reverse-proxy on top of this.
 //
 // Why not just merge daemon + HTTP server? Two reasons: (1) the HTTP
-// listener is opt-in via `tamagotchi server enable/disable`, but the
+// listener is opt-in via `gochi server enable/disable`, but the
 // daemon must always run if the device is to be usable; (2) keeping the
 // kernel-facing serial code in one process means there's a single owner
 // of /dev/cu.usbmodem* with no possibility of contention.
@@ -33,7 +33,7 @@ class Device {
   private connecting = false;
   // When stopped, the daemon releases the serial port and refuses to
   // open any new ones. Used for arduino-cli flashing — see
-  // `tamagotchi stop` and the firmware Makefile.
+  // `gochi stop` and the firmware Makefile.
   private stopped = false;
   // Set by runDaemon() after the watcher is created. The Device uses
   // it to force a re-emit of attach events on `start()` — without that,
