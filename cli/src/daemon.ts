@@ -251,6 +251,7 @@ export async function runDaemon(): Promise<void> {
       if (method === "GET" && path === "/fps") return sendCmd(res, "GET fps");
       if (method === "GET" && path === "/faces") return sendCmd(res, "LIST faces");
       if (method === "POST" && path === "/ping") return sendCmd(res, "PING");
+      if (method === "GET" && path === "/i2c") return sendCmd(res, "SCAN i2c");
 
       send(res, { ok: false, message: "not found" }, 404);
     } catch (e: any) {
@@ -278,6 +279,6 @@ export async function runDaemon(): Promise<void> {
         chmodSync(DAEMON_SOCKET, 0o600);
       } catch {}
     }
-    log(`Tamagotchi daemon listening on ${DAEMON_SOCKET}`);
+    log(`gochi daemon listening on ${DAEMON_SOCKET}`);
   });
 }

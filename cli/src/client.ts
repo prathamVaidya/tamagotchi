@@ -98,17 +98,17 @@ async function call(method: "GET" | "POST", path: string, body?: unknown): Promi
     if (isConnRefused) {
       if (USE_TCP) {
         console.error(
-          `Could not reach the Tamagotchi HTTP frontend at ${TCP_URL}.\n` +
+          `Could not reach the gochi HTTP frontend at ${TCP_URL}.\n` +
             "Is it enabled? Try: gochi server enable",
         );
       } else if (!existsSync(DAEMON_SOCKET) || /ENOENT/i.test(msg)) {
         console.error(
-          "Tamagotchi daemon isn't running.\n" +
+          "gochi daemon isn't running.\n" +
             "Run `gochi setup` once to install it (auto-starts at login).",
         );
       } else {
         console.error(
-          "Tamagotchi daemon socket exists but isn't responding.\n" +
+          "gochi daemon socket exists but isn't responding.\n" +
             "Try: gochi daemon status",
         );
       }
@@ -128,5 +128,6 @@ export const state = () => call("GET", "/state");
 export const fps = () => call("GET", "/fps");
 export const faces = () => call("GET", "/faces");
 export const ping = () => call("POST", "/ping");
+export const i2c = () => call("GET", "/i2c");
 export const stop = () => call("POST", "/stop");
 export const start = () => call("POST", "/start");

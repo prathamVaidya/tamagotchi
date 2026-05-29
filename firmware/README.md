@@ -40,11 +40,12 @@ case-insensitive. Receiving any command switches the pet to Desktop Mode.
 | `GET fps`            | Query the current display frame rate         | `fps 38`                         |
 | `LIST faces`         | List all expression names                    | `neutral,happy,sad,...`          |
 | `PING`               | Liveness check                               | `PONG`                           |
+| `SCAN i2c`           | Enumerate every device on both I2C buses     | `{"A":["0x3C"],"B":["0x68"]}`    |
 
 Anything unrecognized returns `ERR unknown command`.
 
 Expressions: `neutral`, `happy`, `sad`, `sleepy`, `excited`, `surprised`,
-`angry`, `blink`, `love`, `horny`, `shy`, `dead`.
+`angry`, `blink`, `love`, `sexy`, `shy`, `dead`.
 
 Moods: `content`, `playful`, `grumpy`, `sleepy`, `affectionate`.
 
@@ -62,7 +63,7 @@ Each mood has a pool of expressions the pet tends to show:
 
 It picks a fresh expression every ~10–17 s, and every ~45–90 s the mood
 may drift to a new one (a gentle random walk, with `content` as home).
-`SET mood` sets the mood; it keeps drifting afterward. `horny` and `dead`
+`SET mood` sets the mood; it keeps drifting afterward. `sexy` and `dead`
 are kept out of the autonomous rotation — they are manual-only.
 
 ## The image view
@@ -81,12 +82,56 @@ own idle motion (a sliding tear, floating `Z`s, a tremble, pulsing
 hearts, ...). Changing expression plays a blink — eyes close, the new
 face swaps in, eyes reopen. Text wider than the screen scrolls.
 
+If the panel is mounted upside-down, the entire output (face + text +
+image view) can be rotated 180° at compile time via the
+`ROTATED_DISPLAY` knob — see the "Build-time configuration" section
+in the project README.
+
 ## The buzzer
 
 A passive piezo buzzer on **GPIO10** plays a short jingle matching the
 face. In Desktop Mode every expression change jingles; in Free Mode it
 stays quieter — a jingle plays only when the mood shifts. Non-blocking
 (LEDC-driven).
+
+## The IMU (MPU-6050)
+
+A 6-axis MPU-6050 (the GY-521 module works) shares the OLED's I2C bus
+and lets the pet react to being handled:
+
+| MPU pin  | Board                          |
+| -------- | ------------------------------ |
+| VCC      | **3V3** (not 5V)               |
+| GND      | GND                            |
+| SDA      | GPIO5 (same as OLED)           |
+| SCL      | GPIO6 (same as OLED)           |
+| AD0      | leave floating → I2C addr 0x68 |
+| XDA/XCL/INT | unused                      |
+
+Two gestures are detected, each treated like a BOOT-button tap — they
+hand control to Desktop Mode, snap to the face view, and the pet drifts
+back to Free Mode ~60 s later:
+
+- **Pickup** — sustained |a| above ~1.25 g for 250 ms (a brisk lift)
+  → **`surprised`** expression. The pet looks anxious about being held.
+- **Shake** — sustained kinetic motion over a sliding ~½ s window
+  → **`angry`** expression. The pet is annoyed.
+- **Shake spam** — once the pet has been shaken **3 times within 60 s**,
+  the next shake escalates from `angry` to **`sad`** (it actually cries).
+  The counter naturally resets as the older shakes age out of the window.
+
+After any event the detector goes quiet for 1.5 s, so a single gesture
+fires once instead of a burst. If the MPU-6050 isn't connected, the
+boot log prints `IMU: not detected — motion disabled` and the rest of
+the pet behaves exactly as before.
+
+The default I2C address is `0x68`. If your breakout ties **AD0 HIGH**,
+edit `MPU_ADDR` in `src/config.h` to `0x69` and reflash. To verify the
+sensor end-to-end, either run `gochi test imu` (gesture-based, drives
+the live firmware), or flash the standalone bring-up sketch in
+[`tests/mpu/`](tests/README.md) with `make test-mpu` — it streams
+accel + gyro at 50 Hz and opens a browser viewer that draws a 3D
+plane reacting to tilt in real time.
 
 ## Manual test checklist
 
@@ -99,6 +144,21 @@ stays quieter — a jingle plays only when the mood shifts. Non-blocking
 7. **BOOT button** — tap it; the face steps to the next expression.
 8. **Idle** — stop sending commands; after ~60 s it returns to Free Mode.
 
+## Bring-up tests
+
+Standalone Arduino sketches under [`tests/`](tests/README.md), one per
+peripheral, that share `src/config.h` so wiring stays in sync with the
+main firmware. They're for hardware debugging — flash any of them to
+exercise a single component in isolation, without the rest of the
+firmware (or the host-side `gochi` CLI) in the way:
+
+| Target           | Sketch                                                |
+| ---------------- | ----------------------------------------------------- |
+| `make test-led`  | On-board LED blink                                    |
+| `make test-oled` | SSD1306 frame cycle                                   |
+| `make test-buzzer` | C5-major scale on the piezo                         |
+| `make test-mpu`  | MPU-6050 sample streamer + browser viewer (Web Serial) |
+
 ## Source layout
 
 ```
@@ -110,6 +170,7 @@ src/transport.{h,cpp}        buffered serial line I/O
 src/renderer.{h,cpp}         frame-oriented drawing surface
 src/display/                 U8g2-backed SSD1306 driver (hardware I2C)
 src/buzzer/                  non-blocking piezo tone-sequence player
+src/imu/                     MPU-6050 driver + pickup / shake detector
 src/views/                   View interface, FaceView, TextView, ImageView, ViewManager
 src/views/procedural_face.*  the procedural face — all 12 expressions
 src/modes/                   Mode interface, DesktopMode, FreeMode

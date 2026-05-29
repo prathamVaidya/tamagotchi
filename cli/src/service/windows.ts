@@ -54,7 +54,7 @@ function taskXml(command: string, args: string[]): string {
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
     <Author>tamagotchi</Author>
-    <Description>Tamagotchi background service.</Description>
+    <Description>gochi background service.</Description>
   </RegistrationInfo>
   <Triggers>
     <LogonTrigger>
@@ -155,7 +155,7 @@ export function setup(): void {
   const paths = resolveExecutionPaths();
   installTask(DAEMON_TASK, [paths.nodePath, paths.tsxPath, paths.cliEntry, "daemon", "run"]);
   installTask(HTTP_TASK, [paths.nodePath, paths.tsxPath, paths.cliEntry, "server", "run"]);
-  console.log("Tamagotchi installed and running:");
+  console.log("gochi installed and running:");
   console.log(`  daemon task:        ${DAEMON_TASK}`);
   console.log(`  HTTP frontend task: ${HTTP_TASK}  (http://localhost:${SERVER_PORT})`);
   console.log("");
@@ -172,6 +172,19 @@ export function enableHttp(): void {
   const paths = resolveExecutionPaths();
   installTask(HTTP_TASK, [paths.nodePath, paths.tsxPath, paths.cliEntry, "server", "run"]);
   console.log(`HTTP frontend enabled at http://localhost:${SERVER_PORT}.`);
+}
+
+export function killDaemon(): void {
+  if (!taskExists(DAEMON_TASK)) {
+    console.error("daemon isn't installed yet. Run `gochi setup` first.");
+    process.exit(1);
+  }
+  // schtasks has no single 'restart' verb — End stops the running
+  // process, Run kicks off a fresh instance which picks up any source
+  // changes that landed since the previous start.
+  schtasks(["/End", "/TN", DAEMON_TASK]);
+  schtasks(["/Run", "/TN", DAEMON_TASK], { check: true });
+  console.log("daemon restarted with the current code.");
 }
 
 export function disableHttp(): void {
