@@ -17,18 +17,30 @@
 import { select } from "@inquirer/prompts";
 import { Command } from "commander";
 
+import packageJson from "../package.json";
 import * as client from "./client";
 import { runDaemon } from "./daemon";
 import { fileToFrameBase64 } from "./image";
 import { runServer } from "./server";
 import * as service from "./service";
+import { runTest } from "./test";
 
-const VERSION = "0.1.0";
+const VERSION: string = packageJson.version;
 
 // Kept in sync with the firmware's expression / mood registries.
 const FACES = [
-  "neutral", "happy", "sad", "sleepy", "excited", "surprised",
-  "angry",   "blink", "love", "horny",  "shy",     "dead",
+  "neutral",
+  "happy",
+  "sad",
+  "sleepy",
+  "excited",
+  "surprised",
+  "angry",
+  "blink",
+  "love",
+  "sexy",
+  "shy",
+  "dead",
 ];
 const MOODS = ["content", "playful", "grumpy", "sleepy", "affectionate"];
 
@@ -42,7 +54,9 @@ program
 
 program
   .command("setup")
-  .description("install the daemon (and HTTP frontend) so the pet is always reachable")
+  .description(
+    "install the daemon (and HTTP frontend) so the pet is always reachable",
+  )
   .action(() => service.setup());
 
 // stop / start release and reacquire the serial port. The daemon keeps
@@ -57,6 +71,17 @@ program
   .command("start")
   .description("reacquire the serial port after a `stop`")
   .action(async () => print(await client.start()));
+
+// `kill` terminates the running daemon. The launchd / systemd / Task
+// Scheduler unit auto-respawns it, which is the whole point: the new
+// process picks up any source changes (added endpoints, daemon-side
+// bug fixes) without having to rewrite the service unit.
+program
+  .command("kill")
+  .description(
+    "kill the daemon (launchd/systemd auto-respawns it with the current code)",
+  )
+  .action(() => service.killDaemon());
 
 // --- Pet commands ------------------------------------------------------
 
@@ -88,76 +113,190 @@ program
   .command("image")
   .description("show a PNG/JPG on the OLED (auto-resized to 128x64, 1-bit)")
   .argument("<path>", "path to a PNG or JPG file")
-  .option("--no-dither", "use a plain brightness threshold instead of Floyd–Steinberg")
-  .option("-t, --threshold <n>", "threshold cutoff 0..255 (only with --no-dither)", "128")
+  .option(
+    "--no-dither",
+    "use a plain brightness threshold instead of Floyd–Steinberg",
+  )
+  .option(
+    "-t, --threshold <n>",
+    "threshold cutoff 0..255 (only with --no-dither)",
+    "128",
+  )
   .option("--invert", "swap on/off pixels")
   .option("--bg <color>", "letterbox fill: black|white", "black")
-  .action(async (path: string, opts: { dither: boolean; threshold: string; invert?: boolean; bg: string }) => {
-    const t = Number(opts.threshold);
-    if (!Number.isFinite(t) || t < 0 || t > 255) {
-      console.error("threshold must be a number 0..255");
-      process.exit(1);
-    }
-    if (opts.bg !== "black" && opts.bg !== "white") {
-      console.error("bg must be 'black' or 'white'");
-      process.exit(1);
-    }
-    let base64: string;
-    try {
-      base64 = await fileToFrameBase64(path, {
-        dither: opts.dither,
-        threshold: t,
-        invert: opts.invert,
-        background: opts.bg,
-      });
-    } catch (e: any) {
-      console.error(`could not read or decode "${path}": ${e?.message || e}`);
-      process.exit(1);
-    }
-    print(await client.image(base64));
-  });
+  .action(
+    async (
+      path: string,
+      opts: {
+        dither: boolean;
+        threshold: string;
+        invert?: boolean;
+        bg: string;
+      },
+    ) => {
+      const t = Number(opts.threshold);
+      if (!Number.isFinite(t) || t < 0 || t > 255) {
+        console.error("threshold must be a number 0..255");
+        process.exit(1);
+      }
+      if (opts.bg !== "black" && opts.bg !== "white") {
+        console.error("bg must be 'black' or 'white'");
+        process.exit(1);
+      }
+      let base64: string;
+      try {
+        base64 = await fileToFrameBase64(path, {
+          dither: opts.dither,
+          threshold: t,
+          invert: opts.invert,
+          background: opts.bg,
+        });
+      } catch (e: any) {
+        console.error(`could not read or decode "${path}": ${e?.message || e}`);
+        process.exit(1);
+      }
+      print(await client.image(base64));
+    },
+  );
 
 // --- Queries -----------------------------------------------------------
 
 const get = program.command("get");
-get.command("state").description("current view + expression")
+get
+  .command("state")
+  .description("current view + expression")
   .action(async () => print(await client.state()));
-get.command("fps").description("current display frame rate")
+get
+  .command("fps")
+  .description("current display frame rate")
   .action(async () => print(await client.fps()));
 
 const list = program.command("list");
-list.command("faces").description("list all expression names")
+list
+  .command("faces")
+  .description("list all expression names")
   .action(async () => print(await client.faces()));
 
-program.command("ping").description("liveness check (PONG)")
+program
+  .command("ping")
+  .description("liveness check (PONG)")
   .action(async () => print(await client.ping()));
 
-program.command("health").description("daemon + device status")
+// Names for I2C addresses we know about — purely cosmetic, the firmware
+// just returns the addresses.
+const I2C_LABELS: Record<string, string> = {
+  "0x3C": "SSD1306 OLED",
+  "0x68": "MPU-6050 IMU",
+  "0x69": "MPU-6050 IMU (AD0 high)",
+};
+
+program
+  .command("i2c")
+  .description("scan both I2C buses and list every device that ACKs")
+  .action(async () => {
+    const result = await client.i2c();
+
+    // Daemon reachable but the board isn't — most commonly because
+    // `gochi stop` released the serial port. Tell the user how to fix it
+    // instead of dumping a JSON error blob at them.
+    if (!result.ok || result.connected === false) {
+      const why =
+        result.message ?? "no response from the daemon (device may be disconnected)";
+      console.error(`i2c scan failed: ${why}`);
+      console.error("");
+      console.error("If you ran `gochi stop`, run `gochi start` to reconnect.");
+      console.error("Otherwise check `gochi daemon status` and the USB cable.");
+      process.exit(1);
+    }
+
+    // The firmware replies with `{"A":[...],"B":[...]}` — the daemon
+    // may pass it as a parsed object or as the raw string. Either way,
+    // guard against an empty/garbage payload so we don't crash on
+    // `parsed.A` if the daemon handed us null.
+    let parsed: { A?: string[]; B?: string[] } | null = null;
+    const raw = result.response;
+    if (raw != null) {
+      try {
+        parsed = typeof raw === "string" ? JSON.parse(raw) : (raw as any);
+      } catch {
+        // fall through to the "bad payload" handler below
+      }
+    }
+    if (parsed == null || typeof parsed !== "object") {
+      console.error("i2c scan failed: the daemon returned an empty or malformed response.");
+      console.error(`Raw payload: ${JSON.stringify(raw)}`);
+      console.error("Try `gochi start` to refresh the device connection.");
+      process.exit(1);
+    }
+
+    const buses: Array<[string, string, string[]]> = [
+      ["A", "hardware I2C, GPIO5/6", parsed.A ?? []],
+      ["B", "software I2C, GPIO7/8", parsed.B ?? []],
+    ];
+    for (const [label, where, addrs] of buses) {
+      console.log(`Bus ${label} (${where}):`);
+      if (addrs.length === 0) {
+        console.log("  (no devices)");
+      } else {
+        for (const addr of addrs) {
+          const name = I2C_LABELS[addr];
+          console.log(`  ${addr}${name ? `  ${name}` : ""}`);
+        }
+      }
+    }
+  });
+
+// --- Self-test ---------------------------------------------------------
+
+program
+  .command("test")
+  .description("interactive hardware self-test (asks y/n per component)")
+  .argument(
+    "[component]",
+    "serial | oled | buzzer | imu | all (omit to pick from a menu)",
+  )
+  .action(async (component?: string) => {
+    await runTest(component);
+  });
+
+program
+  .command("health")
+  .description("daemon + device status")
   .action(async () => print(await client.health()));
 
 // --- Daemon management -------------------------------------------------
 
-const daemon = program.command("daemon").description("manage the long-lived port-owning daemon");
-daemon.command("run")
+const daemon = program
+  .command("daemon")
+  .description("manage the long-lived port-owning daemon");
+daemon
+  .command("run")
   .description("run the daemon in the foreground (used by launchd)")
   .action(() => runDaemon());
-daemon.command("status")
+daemon
+  .command("status")
   .description("show daemon launchd + socket status")
   .action(() => service.daemonStatus());
 
 // --- HTTP frontend management -----------------------------------------
 
-const server = program.command("server").description("manage the optional HTTP frontend");
-server.command("enable")
+const server = program
+  .command("server")
+  .description("manage the optional HTTP frontend");
+server
+  .command("enable")
   .description("turn on the TCP HTTP listener (auto-started at login)")
   .action(() => service.enableHttp());
-server.command("disable")
+server
+  .command("disable")
   .description("turn off the TCP HTTP listener")
   .action(() => service.disableHttp());
-server.command("status")
+server
+  .command("status")
   .description("show HTTP frontend status")
   .action(() => service.serverStatus());
-server.command("run")
+server
+  .command("run")
   .description("run the HTTP frontend in the foreground (used by launchd)")
   .action(() => runServer());
 

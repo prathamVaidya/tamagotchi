@@ -33,7 +33,7 @@ for a missing device. The `connected` flag in the body signals state.
 ## Install
 
 ```sh
-npm i -g gochi
+npm i -g @0xpv/gochi
 gochi setup           # one-time: installs daemon + HTTP frontend
 ```
 
@@ -79,9 +79,19 @@ gochi get fps
 gochi list faces
 gochi ping
 gochi health
+
+# enumerate every device on both I2C buses (handy when wiring a sensor)
+gochi i2c
+
+# interactive hardware self-test — picks a component from a menu,
+# asks y/n after each, drops troubleshooting tips on 'no'.
+gochi test               # menu: serial / OLED / buzzer / IMU / all
+gochi test oled          # jump straight to one component
+gochi test imu           # lift + shake the device, verify the face reacts
+gochi test all           # run them all in order
 ```
 
-Faces: `neutral happy sad sleepy excited surprised angry blink love horny shy dead`.
+Faces: `neutral happy sad sleepy excited surprised angry blink love sexy shy dead`.
 Moods: `content playful grumpy sleepy affectionate`.
 
 The CLI talks to the daemon over `~/.tamagotchi/daemon.sock` by default.
@@ -115,6 +125,20 @@ gochi start           # daemon reconnects on the next ~1.5s tick
 
 The firmware Makefile wraps `make flash` with this automatically, so
 you don't normally type these by hand.
+
+### Picking up daemon code changes
+
+The daemon is long-lived — it only restarts at login. If you edit
+`daemon.ts` (or any module it imports), the running process keeps
+serving the old code. `gochi kill` terminates it and lets the platform
+service unit auto-respawn a fresh instance:
+
+```sh
+gochi kill            # SIGTERM the daemon; launchd/systemd brings it back
+```
+
+You'll see `daemon killed; launchd is respawning it…` and within a
+second the new process is serving any newly-added endpoints.
 
 ## HTTP frontend (optional)
 

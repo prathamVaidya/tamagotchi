@@ -1,16 +1,23 @@
 // firmware.ino — Tamagotchi firmware entry point (ESP32-C3 SuperMini).
 //
-// The pet boots into Free Mode and lives on its own (see modes/free_mode):
-// it wanders through moods and shows matching expressions. Any serial
-// command hands control to Desktop Mode; ~60 s with no command returns it
-// to Free Mode. The buzzer is synced to the face — every change jingles in
-// Desktop Mode, only mood shifts jingle in Free Mode. See firmware/README.
+// The pet boots into Free Mode and lives on its own — it wanders through
+// moods and shows matching expressions. Any serial command, BOOT-button
+// tap, or IMU gesture hands control to Desktop Mode; ~60 s with no
+// further input drifts back to Free Mode. IMU gestures take priority
+// over everything: pickup → surprised, shake → angry (escalating to sad
+// after SHAKE_CRY_COUNT shakes within SHAKE_CRY_WINDOW_MS — the pet has
+// had enough). After IMU_FACE_HOLD_MS the pet "calms down" — if Free
+// Mode is on, control hands back so it picks a fresh mood-appropriate
+// face; otherwise the face reverts to neutral. The buzzer jingles on
+// every face change in Desktop Mode. See firmware/README.
 
 #include "src/assets/expressions.h"
 #include "src/assets/jingles.h"
 #include "src/buzzer/buzzer.h"
 #include "src/command.h"
 #include "src/config.h"
+#include "src/imu/motion.h"
+#include "src/imu/mpu6050.h"
 #include "src/modes/desktop_mode.h"
 #include "src/modes/free_mode.h"
 #include "src/modes/mode.h"
@@ -18,6 +25,12 @@
 #include "src/renderer.h"
 #include "src/transport.h"
 #include "src/views/view_manager.h"
+
+// Flip to 0 to disable Free Mode: the pet sits in Desktop Mode forever
+// and only reacts to host commands / BOOT taps / IMU gestures (the
+// motion-triggered face reverts to neutral after IMU_FACE_HOLD_MS
+// instead of handing back to autonomous behaviour).
+#define FREE_MODE_ENABLED 1
 
 // The pet's mood — shared between the modes: SET mood writes it, Free Mode
 // reads and slowly evolves it. RAM-only (a reboot resets it to content).
@@ -27,15 +40,43 @@ static Renderer renderer;
 static Transport transport;
 static ViewManager viewManager;
 static DesktopMode desktopMode(transport, renderer, petMood);
+#if FREE_MODE_ENABLED
 static FreeMode freeMode(petMood);
+#endif
 
-// Free Mode is the default; a command switches to Desktop Mode.
+// Default mode: Free if enabled (the pet lives on its own), otherwise
+// Desktop (the pet only reacts to commands / buttons / gestures).
+#if FREE_MODE_ENABLED
 static Mode* currentMode = &freeMode;
+#else
+static Mode* currentMode = &desktopMode;
+#endif
 static uint32_t lastCmdMs = 0;  // time of the last command
 static ExpressionId jingledExpr = ExpressionId::Count;
 
 // No serial command for this long, while in Desktop Mode, drifts to Free.
+// Unused when FREE_MODE_ENABLED is 0 — kept here so the constant survives
+// the flip.
 static const uint32_t IDLE_TO_FREE_MS = 60000;
+
+// IMU-triggered faces (surprised / angry / sad) auto-revert to neutral
+// after this long, so the pet "calms down" instead of staying upset
+// forever. Only takes effect if the face hasn't been changed by anything
+// else in the meantime — a serial command or BOOT-button tap during the
+// hold cancels the auto-revert.
+static const uint32_t IMU_FACE_HOLD_MS = 5000;
+static uint32_t imuFaceExpiryMs = 0;                   // 0 = no pending revert
+static ExpressionId imuSetFace = ExpressionId::Count;  // what motion last set
+
+// Shake escalation: a single shake gets `angry`. If the pet has been
+// shaken SHAKE_CRY_COUNT times within SHAKE_CRY_WINDOW_MS, the latest
+// one tips into `sad` instead — the pet has had enough. Ring buffer of
+// the last few shake timestamps; entries older than the window are
+// implicitly stale (we just compare against `now` when counting).
+static const uint32_t SHAKE_CRY_WINDOW_MS = 60000;
+static const uint8_t SHAKE_CRY_COUNT = 3;
+static uint32_t recentShakesMs[SHAKE_CRY_COUNT] = {0};
+static uint8_t recentShakesHead = 0;
 
 // Hand off between modes via the Mode onExit/onEnter hooks.
 static void setMode(Mode& mode) {
@@ -68,15 +109,22 @@ void setup() {
   renderer.init();
   buzzer::begin();
 
-  // The on-board BOOT button cycles expressions. The 3 external button
-  // pins are wired but unused — configured so they start in a known state.
-  pinMode(PIN_BTN_BOOT, INPUT_PULLUP);
-  pinMode(PIN_BTN_A, INPUT_PULLUP);
-  pinMode(PIN_BTN_B, INPUT_PULLUP);
-  pinMode(PIN_BTN_C, INPUT_PULLUP);
+  // Bring up the IMU on its bit-banged I2C bus. A false return just
+  // means the MPU isn't connected — the rest of the pet boots fine and
+  // imu::isReady() will keep the motion path skipped.
+  if (imu::begin()) {
+    motion::begin();
+  }
 
-  currentMode->onEnter(viewManager);  // boots into Free Mode
+  // The on-board BOOT button cycles expressions.
+  pinMode(PIN_BTN_BOOT, INPUT_PULLUP);
+
+  currentMode->onEnter(viewManager);
+#if FREE_MODE_ENABLED
   transport.println("Tamagotchi ready (Free Mode). Send any command for Desktop Mode.");
+#else
+  transport.println("Tamagotchi ready (Desktop Mode — Free Mode disabled).");
+#endif
 }
 
 void loop() {
@@ -98,9 +146,73 @@ void loop() {
     viewManager.face().setExpression(static_cast<ExpressionId>(next));
   }
 
+  // IMU: pickup → anxious-looking `surprised`; shake → `angry` (the pet
+  // is annoyed), escalating to `sad` (it actually cries) once shaken
+  // SHAKE_CRY_COUNT times within SHAKE_CRY_WINDOW_MS. Acts like a BOOT-
+  // button tap: hands control to Desktop Mode, resets the idle timer,
+  // snaps to the face view so the reaction is always visible even if a
+  // text/image view was up.
+  if (imu::isReady()) {
+    imu::Sample s;
+    if (imu::read(s)) {
+      motion::Event ev = motion::update(s, now);
+      if (ev != motion::Event::None) {
+        lastCmdMs = now;
+        setMode(desktopMode);
+        viewManager.setView(&viewManager.face());
+
+        ExpressionId target;
+        if (ev == motion::Event::Pickup) {
+          target = ExpressionId::Surprised;
+        } else {
+          // Record this shake into the ring buffer of recent shakes,
+          // then count how many of the last SHAKE_CRY_COUNT entries
+          // fall inside the window. >= SHAKE_CRY_COUNT means the pet
+          // has been mistreated enough to cry; otherwise it's just
+          // annoyed.
+          recentShakesMs[recentShakesHead] = now;
+          recentShakesHead = (recentShakesHead + 1) % SHAKE_CRY_COUNT;
+          uint8_t recent = 0;
+          for (uint8_t i = 0; i < SHAKE_CRY_COUNT; ++i) {
+            if (recentShakesMs[i] != 0 && (now - recentShakesMs[i]) <= SHAKE_CRY_WINDOW_MS) {
+              ++recent;
+            }
+          }
+          target = (recent >= SHAKE_CRY_COUNT) ? ExpressionId::Sad : ExpressionId::Angry;
+        }
+
+        viewManager.face().setExpression(target);
+        // Schedule the calm-down: in IMU_FACE_HOLD_MS we'll revert to
+        // neutral, unless something else has changed the face by then.
+        imuSetFace = target;
+        imuFaceExpiryMs = now + IMU_FACE_HOLD_MS;
+      }
+    }
+  }
+
+  // Calm-down timer: if motion set the face and the hold has elapsed,
+  // hand control back. The `current face still matches` guard means a
+  // serial command or BOOT-button tap during the hold cancels the
+  // revert — we don't overwrite the user's choice.
+  if (imuFaceExpiryMs != 0 && (int32_t)(now - imuFaceExpiryMs) >= 0) {
+    imuFaceExpiryMs = 0;
+    if (viewManager.face().expression() == imuSetFace) {
+#if FREE_MODE_ENABLED
+      // Hand back to Free Mode so the pet resumes living on its own
+      // instead of freezing on neutral until the 60 s idle timer fires.
+      setMode(freeMode);
+#else
+      viewManager.face().setExpression(ExpressionId::Neutral);
+#endif
+    }
+    imuSetFace = ExpressionId::Count;
+  }
+
+#if FREE_MODE_ENABLED
   if (currentMode == &desktopMode && now - lastCmdMs >= IDLE_TO_FREE_MS) {
     setMode(freeMode);  // gone idle — let the pet live on its own
   }
+#endif
 
   currentMode->update(now, viewManager);
 

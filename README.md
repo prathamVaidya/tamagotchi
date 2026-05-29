@@ -26,6 +26,7 @@ arduino-cli --config-file firmware/arduino-cli.yaml core install esp32:esp32
 | ------------------- | --------------------------------------------- |
 | `make build`        | Compile the sketch                            |
 | `make flash`        | Compile + upload to the board                 |
+| `make erase`        | Wipe the entire flash (factory reset)         |
 | `make monitor`      | Open the serial monitor (115200, Ctrl-C exits)|
 | `make flash-monitor`| Flash, then open the monitor                  |
 | `make db`           | Regenerate `compile_commands.json` for Zed    |
@@ -33,6 +34,47 @@ arduino-cli --config-file firmware/arduino-cli.yaml core install esp32:esp32
 | `make format-check` | Check formatting without editing (CI-friendly)|
 | `make ports`        | List connected boards                         |
 | `make clean`        | Delete build artifacts                        |
+
+### Hardware bring-up tests
+
+Four standalone sketches under `firmware/tests/` for verifying each
+peripheral on its own — useful when bringing up a fresh board or
+chasing a hardware fault, and they don't need the `gochi` CLI / daemon
+installed. Each one compiles + flashes in a single target:
+
+| Command          | What it does                                                 |
+| ---------------- | ------------------------------------------------------------ |
+| `make test-led`  | Blinks `LED_BUILTIN` at 1 Hz                                 |
+| `make test-oled` | Cycles four frames on the SSD1306                            |
+| `make test-buzzer` | Plays a C5-major scale on the piezo                        |
+| `make test-mpu`  | Streams MPU-6050 samples **and** opens a live browser viewer |
+
+`make test-mpu` also opens `firmware/tests/mpu/visualize.html` — a
+single-page Web Serial viewer (Chrome / Edge only) that draws a 3D
+plane reacting to roll / pitch plus live numeric values for all six
+axes. See [`firmware/tests/README.md`](firmware/tests/README.md) for
+details.
+
+## Build-time configuration (`.env`)
+
+A few build-time knobs live in a user-local `.env` at the repo root.
+The Makefile `-include`s it automatically and translates each
+supported `KEY=VALUE` pair into a `-D<KEY>=<value>` compiler flag,
+applied to **every** compile — main firmware and bring-up tests
+alike. `.env` is gitignored; the committed template is `.env.example`.
+
+```sh
+cp .env.example .env       # then edit
+make test-oled             # verify the new settings on the panel
+make flash                 # main firmware picks them up too
+```
+
+| Variable           | Effect                                                              | Default |
+| ------------------ | ------------------------------------------------------------------- | ------- |
+| `ROTATED_DISPLAY`  | `=1` flips the OLED 180° (`U8G2_R2`) — for upside-down mounted panels | `0`     |
+
+Format: plain `KEY=value`, one per line — no quotes, no `export`,
+`#`-prefixed lines are comments. See [`.env.example`](.env.example).
 
 ## Linting & formatting
 
@@ -44,10 +86,15 @@ arduino-cli --config-file firmware/arduino-cli.yaml core install esp32:esp32
   `--clang-tidy` flag in `.zed/settings.json`. No separate binary needed. For a
   terminal lint pass, `brew install llvm` provides a standalone `clang-tidy`.
 
-The board's USB port is auto-detected. If it's wrong, pass it explicitly:
+The board's USB port is auto-detected on macOS (`/dev/cu.usbmodem*`)
+and Linux (`/dev/ttyACM*`). On Windows it isn't auto-detected — run
+`make ports` (or Device Manager → **Ports (COM & LPT)**) to find the
+COMx and pass it explicitly:
 
 ```sh
-make flash PORT=/dev/cu.usbmodemXXXX
+make flash PORT=/dev/cu.usbmodemXXXX    # macOS
+make flash PORT=/dev/ttyACM0            # Linux / WSL
+make flash PORT=COM7                    # Windows
 ```
 
 ## Board notes
